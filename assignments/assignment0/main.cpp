@@ -18,6 +18,14 @@ void framebufferSizeCallback(GLFWwindow* window, int width, int height);
 GLFWwindow* initWindow(const char* title, int width, int height);
 void drawUI();
 
+struct Material
+{
+	float Ka = 1.0;
+	float Kd = 0.5;
+	float Ks = 0.5;
+	float Shininess = 128;
+}material;
+
 ew::Camera camera;
 ew::CameraController cameraController;
 ew::Transform monkeyTransform;
@@ -33,8 +41,6 @@ void resetCamera(ew::Camera* camera, ew::CameraController* controller) {
 	camera->target = glm::vec3(0);
 	controller->yaw = controller->pitch = 0;
 }
-
-//START ON MATERIAL CONTROLS p19
 
 void func(ew::Shader& shader, ew::Model &model, GLFWwindow *window, GLuint &brickTexture)
 {
@@ -62,6 +68,11 @@ void func(ew::Shader& shader, ew::Model &model, GLFWwindow *window, GLuint &bric
 	shader.setVec3("_EyePos", camera.position);
 	shader.setMat4("transformModel", glm::mat4(1.0f));
 	shader.setMat4("viewProjection", camera.projectionMatrix() * camera.viewMatrix());
+	//Material
+	shader.setFloat("_Material.Ka", material.Ka);
+	shader.setFloat("_Material.Kd", material.Kd);
+	shader.setFloat("_Material.Ks", material.Ks);
+	shader.setFloat("_Material.Shininess", material.Shininess);
 	//transfrom.modelMatrix combines translation rotation scale into model matrix (4x4)
 	shader.setMat4("transformModel", monkeyTransform.modelMatrix());
 	model.draw(); //Draws monkey model using current shader
@@ -112,6 +123,13 @@ void drawUI() {
 	if (ImGui::Button("Reset Camera"))
 	{
 		resetCamera(&camera, &cameraController);
+	}
+	if (ImGui::CollapsingHeader("Material"))
+	{
+		ImGui::SliderFloat("AmbientK", &material.Ka, 0.0f, 1.0f);
+		ImGui::SliderFloat("DiffuseK", &material.Kd, 0.0f, 1.0f);
+		ImGui::SliderFloat("SpecularK", &material.Ks, 0.0f, 1.0f);
+		ImGui::SliderFloat("Shininess", &material.Shininess, 2.0f, 1024.0f);
 	}
 	ImGui::Text("Add Controls Here!");
 	ImGui::End();
