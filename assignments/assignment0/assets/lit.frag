@@ -9,6 +9,7 @@ in Surface{
 out vec4 FragColor; //color of fragment
 
 uniform sampler2D _MainTex; //2D texture samp
+uniform sampler2D _NormalMap; //stones map
 uniform vec3 _EyePos;
 //lighting downward
 uniform vec3 _LightDirection = vec3(0.0, -1.0, 0.0);
@@ -21,6 +22,7 @@ struct Material
 	float Kd; //diffuse coeff 0-1
 	float Ks; //ambient coeff 0-1
 	float Shininess; //size of specular highlight
+	vec3 rgb_normal ;
 };
 uniform Material _Material;
 
@@ -28,6 +30,11 @@ void main()
 {
 	//fragnormal still length 1 after interpol
 	vec3 normal = normalize(fs_in.WorldNormal);
+
+	// obtain normal from normal map in range [0,1]
+    normal = texture(_NormalMap, fs_in.TexCoord).rgb;
+    // transform normal vector to range [-1,1]
+    normal = normalize(normal * 2.0 - 1.0);  
 
 	//lighting down
 	vec3 toLight = -_LightDirection;

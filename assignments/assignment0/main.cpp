@@ -30,6 +30,8 @@ ew::Camera camera;
 ew::CameraController cameraController;
 ew::Transform monkeyTransform;
 
+int texSlot = 0;
+
 //Global state
 int screenWidth = 1080;
 int screenHeight = 720;
@@ -42,7 +44,7 @@ void resetCamera(ew::Camera* camera, ew::CameraController* controller) {
 	controller->yaw = controller->pitch = 0;
 }
 
-void func(ew::Shader& shader, ew::Model &model, GLFWwindow *window, GLuint &brickTexture)
+void func(ew::Shader& shader, ew::Model &model, GLFWwindow *window, GLuint &brickTexture, GLuint& stonesTexture, GLuint& stonesNorms)
 {
 	//1. pipeline definion
 	glEnable(GL_CULL_FACE);
@@ -62,9 +64,18 @@ void func(ew::Shader& shader, ew::Model &model, GLFWwindow *window, GLuint &bric
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, brickTexture);
 
+	//bind brick to tex unit 1
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, stonesTexture);
+
+	//bind brick to tex unit 1
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, stonesNorms);
+
 	shader.use();
 	//make "_MainTex" sampler2D sample from 2D texture bound to unit 0
-	shader.setInt("_MainTex", 0);
+	shader.setInt("_MainTex", texSlot);
+	shader.setInt("_NormalMap", 2);
 	shader.setVec3("_EyePos", camera.position);
 	shader.setMat4("transformModel", glm::mat4(1.0f));
 	shader.setMat4("viewProjection", camera.projectionMatrix() * camera.viewMatrix());
@@ -83,20 +94,20 @@ int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
 
-	//bricktex
+	//textures
 	GLuint brickTexture = ew::loadTexture("assets/brick_color.jpg");
+	GLuint stonesTexture = ew::loadTexture("assets/PavingStones/PavingStones138_1K-JPG_Color.jpg");
+	GLuint stonesNorms = ew::loadTexture("assets/PavingStones/PavingStones138_1K-JPG_NormalGL.jpg");
 
 	//cache
 	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
-	ew::Model monkeyModel = ew::Model("assets/suzanne.obj");
+	ew::Model monkeyModel = ew::Model("assets/suzanne.fbx");
 
 	//camera
 	camera.position = glm::vec3(0.0f, 0.0f, 5.0f);
 	camera.target = glm::vec3(0.0f, 0.0f, 0.0f); //looks at center
 	camera.aspectRatio = (float)screenWidth / screenHeight;
 	camera.fov = 60.0f; //Vertical fov in degrees
-
-	
 
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
@@ -105,7 +116,7 @@ int main() {
 		deltaTime = time - prevFrameTime;
 		prevFrameTime = time;
 
-		func(shader, monkeyModel, window, brickTexture);
+		func(shader, monkeyModel, window, brickTexture, stonesTexture, stonesNorms);
 
 		drawUI();
 
@@ -120,6 +131,14 @@ void drawUI() {
 	ImGui::NewFrame();
 
 	ImGui::Begin("Settings");
+	if (ImGui::Button("Set Brick"))
+	{
+		texSlot = 0;
+	}
+	if (ImGui::Button("Set Stone"))
+	{
+		texSlot = 1;
+	}
 	if (ImGui::Button("Reset Camera"))
 	{
 		resetCamera(&camera, &cameraController);
