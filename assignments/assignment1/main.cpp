@@ -39,7 +39,6 @@ Framebuffer framebuffer;
 struct FullscreenQuad {
 	GLuint vao;
 	GLuint vbo;
-
 };
 FullscreenQuad fullscreen_quad;
 
@@ -55,14 +54,32 @@ int screenHeight = 720;
 float prevFrameTime;
 float deltaTime;
 
+static float quad_vertices[] = {
+	//pos (x,y) texcoords (u,v)
+	-1.0f, 1.0f, 0.0f, 1.0f,
+	-1.0f, -1.0f, 0.0f, 0.0f,
+	1.0f, -1.0f, 1.0f, 0.0f,
+
+	-1.0f, 1.0f, 0.0f, 1.0f,
+	1.0f, -1.0f, 1.0f, 0.0f,
+	1.0f, 1.0f, 1.0f, 1.0f,
+};
+
 void resetCamera(ew::Camera* camera, ew::CameraController* controller) {
 	camera->position = glm::vec3(0, 0, 5.0f);
 	camera->target = glm::vec3(0);
 	controller->yaw = controller->pitch = 0;
 }
 
-void func(ew::Shader& shader, ew::Model &model, GLFWwindow *window, GLuint &brickTexture, GLuint& stonesTexture, GLuint& stonesNorms)
+void render(ew::Shader& shader, ew::Model &model, GLFWwindow *window, GLuint &brickTexture, GLuint& stonesTexture)
 {
+	// bind fbuffer
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.fbo);
+
+	//clear default buffer
+	glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	
 	//1. pipeline definion
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_BACK);
@@ -72,11 +89,6 @@ void func(ew::Shader& shader, ew::Model &model, GLFWwindow *window, GLuint &bric
 	glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	//rotate model around Y
-	monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0, 1.0, 0.0));
-
-	cameraController.move(window, &camera, deltaTime);
-
 	//bind brick to tex unit 0
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, brickTexture);
@@ -85,14 +97,11 @@ void func(ew::Shader& shader, ew::Model &model, GLFWwindow *window, GLuint &bric
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, stonesTexture);
 
-	//bind brick to tex unit 1
-	glActiveTexture(GL_TEXTURE2);
-	glBindTexture(GL_TEXTURE_2D, stonesNorms);
 
 	shader.use();
 	//make "_MainTex" sampler2D sample from 2D texture bound to unit 0
 	shader.setInt("_MainTex", texSlot);
-	shader.setInt("_NormalMap", 2);
+	shader.setInt("_NormalMap", 1);
 	shader.setVec3("_EyePos", camera.position);
 	shader.setMat4("transformModel", glm::mat4(1.0f));
 	shader.setMat4("viewProjection", camera.projectionMatrix() * camera.viewMatrix());
@@ -101,17 +110,23 @@ void func(ew::Shader& shader, ew::Model &model, GLFWwindow *window, GLuint &bric
 	shader.setFloat("_Material.Kd", material.Kd);
 	shader.setFloat("_Material.Ks", material.Ks);
 	shader.setFloat("_Material.Shininess", material.Shininess);
+
+	//rotate model around Y
+	monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0, 1.0, 0.0));
 	//transfrom.modelMatrix combines translation rotation scale into model matrix (4x4)
 	shader.setMat4("transformModel", monkeyTransform.modelMatrix());
+
 	model.draw(); //Draws monkey model using current shader
 
+	cameraController.move(window, &camera, deltaTime);
+
+	//unbind frame buffer
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 int main() {
-	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
+	GLFWwindow* window = initWindow("Assignment 1", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
-
-	
 
 	//textures
 	GLuint brickTexture = ew::loadTexture("assets/brick_color.jpg");
@@ -119,8 +134,8 @@ int main() {
 	GLuint stonesNorms = ew::loadTexture("assets/PavingStones/PavingStones138_1K-JPG_NormalGL.jpg");
 
 	//cache
-	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
-	ew::Shader fullscreen = ew::Shader("assets/fullscreen.vert", "assets/fullscreen.frag");
+	ew::Shader shader_lit = ew::Shader("assets/lit.vert", "assets/lit.frag");
+	ew::Shader shader_fullscreen = ew::Shader("assets/fullscreen.vert", "assets/fullscreen.frag");
 	ew::Shader invShader = ew::Shader("assets/inverse.vert", "assets/inverse.frag");
 	ew::Model monkeyModel = ew::Model("assets/suzanne.fbx");
 
@@ -131,42 +146,37 @@ int main() {
 	camera.fov = 60.0f; //Vertical fov in degrees
 
 	//initialize fullscreen quad
-	glBindVertexArray(fullscreen_quad.vao);
-	glBindBuffer(GL_ARRAY_BUFFER, fullscreen_quad.vao);
+	glGenVertexArrays(1, &fullscreen_quad.vao);
+	glGenBuffers(1, &fullscreen_quad.vbo);
 
-	static float quad_vertices[] = {
-		//pos (x,y) texcoords (u,v)
-		-1.0f, 1.0f, 0.0f, 1.0f,
-		-1.0f, -1.0f, 0.0f, 0.0f,
-		1.0f, -1.0f, 1.0f, 0.0,
-
-		-1.0f, 1.0f, 0.0f, 1.0f,
-		1.0f, -1.0f, 1.0f, 0.0f,
-		1.0f, 1.0f, 1.0f, 1.0f,
-	};
 
 	//bind vao to vbo
 	glBindVertexArray(fullscreen_quad.vao);
 	glBindBuffer(GL_ARRAY_BUFFER, fullscreen_quad.vbo);
 
 	//buffer data to vbo
-	glBufferData(GL_VERTEX_ARRAY, sizeof(quad_vertices), &quad_vertices, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), &quad_vertices, GL_STATIC_DRAW);
 
 	glEnableVertexAttribArray(0); //positions
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (void*)0);
 	glEnableVertexAttribArray(1);
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (void*) (sizeof(float) *2));
+	glBindVertexArray(0);
 
-
-	//--
-
+	//init framebuffer
 	glGenFramebuffers(1, &framebuffer.fbo);
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.fbo);
 
+	//color
 	glGenTextures(1, &framebuffer.color0);
+	glBindTexture(GL_TEXTURE_2D, framebuffer.color0);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 800, 600, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-	glBindFramebuffer(GL_TEXTURE_2D, framebuffer.color0);
-	glTexImage2D();
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.color0, 0);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
@@ -175,21 +185,26 @@ int main() {
 		deltaTime = time - prevFrameTime;
 		prevFrameTime = time;
 
-		func(shader, monkeyModel, window, brickTexture, stonesTexture, stonesNorms);
+		//clear default buffer
+		glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		render(shader_lit, monkeyModel, window, brickTexture, stonesTexture);
 
 		glDisable(GL_DEPTH_TEST);
 
-		//clear default buffer
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
 
+
 		//render fullscreen quad
-		invShader.use();
-		invShader.setInt("texture0", 0);
+		shader_fullscreen.use();
+		shader_fullscreen.setInt("texture0", 0);
 		glBindVertexArray(fullscreen_quad.vao);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, framebuffer.color0);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
+		glBindVertexArray(0);
 
 		drawUI();
 
