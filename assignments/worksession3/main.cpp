@@ -21,10 +21,11 @@ void drawUI();
 
 struct
 {
-	glm::vec3 color = {0.0f, 0.31f, 0.85f};
-	float tiling = 1.0f;
-	float b1 = 0.0f;
-	float b2 = 0.0f;
+	glm::vec3 color = {0.2627f, 0.5255f, 0.6431f};
+	float tex_scale = 5.0f;
+	float warp_scale = 1.0f;
+	float spec_scale = 1.0f;
+	float warp_strength = 0.2f;
 }debug;
 
 struct Material
@@ -73,6 +74,14 @@ void func(ew::Shader& shader, ew::Model &model, GLFWwindow *window, GLuint &wate
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, waterTexture);
 
+	//bind brick to tex unit 0
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, waterTexture);
+
+	//bind brick to tex unit 0
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, waterTexture);
+
 	shader.use();
 	shader.setMat4("transformModel", glm::mat4(1.0f));
 	shader.setMat4("viewProjection", camera.projectionMatrix() * camera.viewMatrix());
@@ -80,10 +89,12 @@ void func(ew::Shader& shader, ew::Model &model, GLFWwindow *window, GLuint &wate
 	shader.setVec3("cameraPos", camera.position);
 	shader.setVec3("water_color", debug.color);
 	shader.setInt("texture", 0);
-	shader.setFloat("tiling", debug.tiling);
+	shader.setFloat("texScale", debug.tex_scale);
+	shader.setFloat("warpScale", debug.warp_scale);
+	shader.setFloat("specScale", debug.spec_scale);
+	shader.setFloat("warpStrength", debug.warp_strength);
 	shader.setFloat("time", time);
-	shader.setFloat("b1", debug.b1);
-	shader.setFloat("b2", debug.b2);
+	
 
 	cameraController.move(window, &camera, deltaTime);
 	planeMesh.draw();
@@ -97,10 +108,9 @@ int main() {
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
 
 	//textures
-	GLuint brickTexture = ew::loadTexture("assets/brick_color.jpg");
-	GLuint waterTexture = ew::loadTexture("assets/water.png");
-	GLuint stonesTexture = ew::loadTexture("assets/PavingStones/PavingStones138_1K-JPG_Color.jpg");
-	GLuint stonesNorms = ew::loadTexture("assets/PavingStones/PavingStones138_1K-JPG_NormalGL.jpg");
+	GLuint waterTexture = ew::loadTexture("assets/wave_tex.png");
+	GLuint waterSpec = ew::loadTexture("assets/wave_spec.png");
+	GLuint waterWarp = ew::loadTexture("assets/wave_warp.png");
 
 	//cache
 	ew::Shader shader = ew::Shader("assets/water.vert", "assets/water.frag");
@@ -147,9 +157,9 @@ void drawUI() {
 		ImGui::SliderFloat("Shininess", &material.Shininess, 2.0f, 1024.0f);
 	}
 	ImGui::ColorEdit3("debug", &debug.color.x);
-	ImGui::SliderFloat("tiling", &debug.tiling, 1.0f, 10.0f);
-	ImGui::SliderFloat("b1", &debug.b1, 0.0f, 1.0f);
-	ImGui::SliderFloat("b2", &debug.b2, 0.0f, 1.0f);
+	ImGui::SliderFloat("texScale", &debug.tex_scale, 0.0f, 10.0f);
+	ImGui::SliderFloat("warpScale", &debug.warp_scale, 0.0f, 1.0f);
+	ImGui::SliderFloat("specScale", &debug.spec_scale, 0.0f, 1.0f);
 	ImGui::Text("Add Controls Here!");
 	ImGui::End();
 
