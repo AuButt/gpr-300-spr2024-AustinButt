@@ -41,22 +41,29 @@ struct DepthBuffer {
 		//color
 		glGenTextures(1, &depth);
 		glBindTexture(GL_TEXTURE_2D, depth);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 256, 256, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, depth, 0);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1024, 1024, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL);
+		/*glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);*/
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, depth, 0);
 
 		glDrawBuffer(GL_NONE);
 		glReadBuffer(GL_NONE);
 
-		/*if(glCheckFramebufferStatus())*/
+		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+			printf("frame buffer not complete");
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
 }depthbuffer;
+
+struct Light
+{
+	glm::vec3 color;
+	glm::vec3 position;
+}light;
 
 struct Framebuffer
 {
@@ -103,8 +110,9 @@ void resetCamera(ew::Camera* camera, ew::CameraController* controller) {
 	controller->yaw = controller->pitch = 0;
 }
 
-void render(ew::Shader& shader, ew::Model& model, GLFWwindow* window, GLuint& brickTexture, GLuint& stonesTexture, ew::Mesh planeMesh)
+void render(ew::Shader& shader, ew::Model& model, GLFWwindow* window, GLuint& brickTexture, GLuint& stonesTexture, ew::Mesh planeMesh, ew::Shader& shadow_pass)
 {
+	const auto view_proj = camera.projectionMatrix() * camera.viewMatrix();
 
 	const auto light_proj = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, 0.1f, 100.0f);
 	const auto light_view = glm::lookAt(light.position, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -119,16 +127,16 @@ void render(ew::Shader& shader, ew::Model& model, GLFWwindow* window, GLuint& br
 		//begin pass
 		glClear(GL_DEPTH_BUFFER_BIT);
 
-		shadow_pass->use();
+		shadow_pass.use();
 		shadow_pass.setMat4("transformModel", glm::mat4(1.0f));
-		shadow_pass.setMat4("light_view_proj", camera.projectionMatrix() * camera.viewMatrix());
+		shadow_pass.setMat4("light_view_proj", light_view_proj);
 
 	}
 
 	// bind fbuffer
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.fbo);
-
 	glViewport(0, 0, 256, 256);
+	//glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	//clear default buffer
 	glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
@@ -197,6 +205,8 @@ int main() {
 
 	//cache
 	ew::Shader shader_lit = ew::Shader("assets/lit.vert", "assets/lit.frag");
+	ew::Shader blinn = ew::Shader("assets/blinnphong.vert", "assets/blinnphong.frag");
+	ew::Shader shadow_pass = ew::Shader("assets/shadow_pass.vert", "assets/shadow_pass.frag");
 	ew::Shader shader_fullscreen = ew::Shader("assets/fullscreen.vert", "assets/fullscreen.frag");
 	ew::Shader invShader = ew::Shader("assets/inverse.vert", "assets/inverse.frag");
 	ew::Model monkeyModel = ew::Model("assets/suzanne.fbx");
@@ -255,7 +265,7 @@ int main() {
 
 		//const auto rym = glm::rotate((float)time.absolute, glm::);
 
-		render(shader_lit, monkeyModel, window, brickTexture, stonesTexture, plane);
+		render(blinn, monkeyModel, window, brickTexture, stonesTexture, plane, shadow_pass);
 
 		glDisable(GL_DEPTH_TEST);
 

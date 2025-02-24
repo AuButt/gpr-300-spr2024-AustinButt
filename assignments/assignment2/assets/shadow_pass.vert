@@ -3,6 +3,7 @@
 //Vertex attributes
 layout (location = 0) in vec3 vPos; //vertex pos
 
+out vec3 vs_normal;
 
 uniform mat4 transformModel; 
 uniform mat4 light_view_proj; 
@@ -10,5 +11,5 @@ uniform mat4 light_view_proj;
 void main()
 {
 	vec4 world_position = transformModel * vec4(vPos, 1.0);
-	gl_Position = light_view_proj * transformModel * world_position;
+	gl_Position = light_view_proj * world_position;
 }

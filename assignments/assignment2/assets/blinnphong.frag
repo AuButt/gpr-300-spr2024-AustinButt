@@ -28,15 +28,19 @@ in vec3 vs_texcoord;
 uniform Material material;
 uniform vec3 camera_position;
 uniform Light light;
+uniform sampler2D shadowMap;
 
-float shadow_calculation(vec4 frag_pos_lightspace)
+float ShadowCalculations(vec4 frag_pos_lightspace)
 {
-	
-	
+	vec3 projCoord = frag_pos_lightspace.xyz / frag_pos_lightspace.xyz;
+	projCoord = (projCoord * 0.5) + 0.5;
 
-	float shadow = (camera_depth > lightdepth) ? 1.0:0.0;
-	
-	return 0.0f;
+	float closestDepth = texture(shadowMap, projCoord.xy).r;
+	float currDepth = projCoord.z;
+
+	float shadow = (currDepth > closestDepth) ? 1.0 : 0.0;
+
+	return shadow;
 }
 
 vec3 blinnphong(vec3 normal, vec3 frag_pos)
@@ -47,11 +51,11 @@ vec3 blinnphong(vec3 normal, vec3 frag_pos)
 	vec3 halfway_dir = normalize(light_dir + view_dir);
 
 	//dot products
-	float ndotl = max(dot(normal, light.color), 0.0);
+	float ndotl = max(dot(normal, light_dir), 0.0);
 	float ndoth = max(dot(normal, halfway_dir), 0.0);
 
 	//light components
-	vec3 diffuse = ndotl * vec3(material.diffuse);
+	vec3 diffuse = ndotl * material.diffuse;
 	vec3 specular = pow(ndoth, material.shininess * 128.0) * material.specular;
 
 	return (diffuse + specular);
@@ -61,10 +65,9 @@ void main()
 {
 	vec3 normal = normalize(vs_normal);
 
-	float shadow = shadow_calculation(vec4(0.0));
+	float shadow = ShadowCalculations();
 
 	vec3 lighting = blinnphong(normal, vs_position);
-
 	lighting *= light.color;
 	lighting *= vec3(1.0) * material.ambient;
 
