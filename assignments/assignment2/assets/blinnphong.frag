@@ -8,11 +8,13 @@ struct Material{
 	vec3 specular;
 	float shininess;
 };
+uniform Material material;
 
 struct Light{
 	vec3 color;
 	vec3 position;
 };
+uniform Light light;
 
 struct Ambient{
 	vec3 color;
@@ -22,12 +24,12 @@ struct Ambient{
 // ins
 in vec3 vs_position;
 in vec3 vs_normal;
-in vec3 vs_texcoord;
+in vec2 vs_texcoord;
+in vec4 frag_pos_lightspace;
 
 //uniforms
-uniform Material material;
+uniform sampler2D _MainTex;
 uniform vec3 camera_position;
-uniform Light light;
 uniform sampler2D shadowMap;
 
 float ShadowCalculations(vec4 frag_pos_lightspace)
@@ -65,13 +67,13 @@ void main()
 {
 	vec3 normal = normalize(vs_normal);
 
-	float shadow = ShadowCalculations();
+	float shadow = ShadowCalculations(frag_pos_lightspace);
 
 	vec3 lighting = blinnphong(normal, vs_position);
 	lighting *= light.color;
 	lighting *= vec3(1.0) * material.ambient;
 
-	vec3 object_color = normal * 0.5 + 0.5;
+	vec3 object_color = texture(_MainTex, vs_texcoord).rgb;
 
 	FragColor = vec4(object_color * lighting, 1.0);
 }

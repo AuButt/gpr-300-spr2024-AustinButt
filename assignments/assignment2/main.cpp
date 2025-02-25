@@ -42,8 +42,8 @@ struct DepthBuffer {
 		glGenTextures(1, &depth);
 		glBindTexture(GL_TEXTURE_2D, depth);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1024, 1024, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL);
-		/*glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);*/
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, depth, 0);
@@ -110,7 +110,7 @@ void resetCamera(ew::Camera* camera, ew::CameraController* controller) {
 	controller->yaw = controller->pitch = 0;
 }
 
-void render(ew::Shader& shader, ew::Model& model, GLFWwindow* window, GLuint& brickTexture, GLuint& stonesTexture, ew::Mesh planeMesh, ew::Shader& shadow_pass)
+void render(ew::Shader& shader, ew::Model& model, GLFWwindow* window, GLuint& brickTexture, ew::Mesh planeMesh, ew::Shader& shadow_pass)
 {
 	const auto view_proj = camera.projectionMatrix() * camera.viewMatrix();
 
@@ -122,7 +122,7 @@ void render(ew::Shader& shader, ew::Model& model, GLFWwindow* window, GLuint& br
 	{
 		glEnable(GL_DEPTH_TEST);
 
-		glViewport(0, 0, 256, 256);
+		glViewport(0, 0, 1024, 1024);
 
 		//begin pass
 		glClear(GL_DEPTH_BUFFER_BIT);
@@ -135,7 +135,7 @@ void render(ew::Shader& shader, ew::Model& model, GLFWwindow* window, GLuint& br
 
 	// bind fbuffer
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.fbo);
-	glViewport(0, 0, 256, 256);
+	glViewport(0, 0, 800, 600);
 	//glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	//clear default buffer
@@ -155,34 +155,27 @@ void render(ew::Shader& shader, ew::Model& model, GLFWwindow* window, GLuint& br
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, depthbuffer.depth);
 
-	//bind brick to tex unit 1
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, stonesTexture);
-
-
 	shader.use();
-
 
 	//make "_MainTex" sampler2D sample from 2D texture bound to unit 0
 	shader.setInt("_MainTex", 0);
-	shader.setInt("_NormalMap", 1);
-	shader.setVec3("_EyePos", camera.position);
+	shader.setVec3("camera_position", camera.position);
+	shader.setVec3("light.color", light.color);
+	shader.setVec3("light.position", light.position);
 	shader.setMat4("transformModel", glm::mat4(1.0f));
 	shader.setMat4("viewProjection", camera.projectionMatrix() * camera.viewMatrix());
 	//Material
-	shader.setFloat("_Material.Ka", material.Ka);
-	shader.setFloat("_Material.Kd", material.Kd);
-	shader.setFloat("_Material.Ks", material.Ks);
-	shader.setFloat("_Material.Shininess", material.Shininess);
+	shader.setFloat("material.ambient", material.Ka);
+	shader.setFloat("material.diffuse", material.Kd);
+	shader.setFloat("material.specular", material.Ks);
+	shader.setFloat("material.shininess", material.Shininess);
 	
-
 	planeMesh.draw();
 
 	//rotate model around Y
 	monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0, 1.0, 0.0));
 	//transfrom.modelMatrix combines translation rotation scale into model matrix (4x4)
 	shader.setMat4("transformModel", monkeyTransform.modelMatrix());
-
 	
 	model.draw(); //Draws monkey model using current shader
 
@@ -222,7 +215,6 @@ int main() {
 	//initialize fullscreen quad
 	glGenVertexArrays(1, &fullscreen_quad.vao);
 	glGenBuffers(1, &fullscreen_quad.vbo);
-
 
 	//bind vao to vbo
 	glBindVertexArray(fullscreen_quad.vao);
@@ -265,7 +257,7 @@ int main() {
 
 		//const auto rym = glm::rotate((float)time.absolute, glm::);
 
-		render(blinn, monkeyModel, window, brickTexture, stonesTexture, plane, shadow_pass);
+		render(blinn, monkeyModel, window, brickTexture, plane, shadow_pass);
 
 		glDisable(GL_DEPTH_TEST);
 
@@ -276,6 +268,7 @@ int main() {
 		//render fullscreen quad
 		shader_fullscreen.use();
 		shader_fullscreen.setInt("texture0", 0);
+		glViewport(0, 0, screenWidth, screenHeight);
 		glBindVertexArray(fullscreen_quad.vao);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, framebuffer.color0);
