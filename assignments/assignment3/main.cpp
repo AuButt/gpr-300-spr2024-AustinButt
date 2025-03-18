@@ -9,6 +9,8 @@
 #include <ew/transform.h>
 #include <ew/texture.h>
 #include <ew/procGen.h>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/transform.hpp>
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -19,7 +21,13 @@ void framebufferSizeCallback(GLFWwindow* window, int width, int height);
 GLFWwindow* initWindow(const char* title, int width, int height);
 void drawUI();
 
-static glm::vec4 light_orbit_radius = { 2.0f, 2.0f, -2.0f, -1.0f };
+struct
+{
+	glm::vec3 color = {0.0f, 0.31f, 0.85f};
+	float tiling = 1.0f;
+	float b1 = 0.0f;
+	float b2 = 0.0f;
+}debug;
 
 struct Material
 {
@@ -29,12 +37,51 @@ struct Material
 	float Shininess = 128;
 }material;
 
+struct Framebuffer
+{
+	GLuint fbo;
+	GLuint color0;
+	GLuint color1;
+	GLuint color2;
+	GLuint depth;
+};
+Framebuffer framebuffer1, framebuffer2;
+
+struct FullscreenQuad {
+	GLuint vao;
+	GLuint vbo;
+};
+FullscreenQuad fullscreen_quad;
+
+static float quad_vertices[] = {
+	//pos (x,y) texcoords (u,v)
+	-1.0f, 1.0f, 0.0f, 1.0f,
+	-1.0f, -1.0f, 0.0f, 0.0f,
+	1.0f, -1.0f, 1.0f, 0.0f,
+
+	-1.0f, 1.0f, 0.0f, 1.0f,
+	1.0f, -1.0f, 1.0f, 0.0f,
+	1.0f, 1.0f, 1.0f, 1.0f,
+};
+
+ew::Camera camera;
+ew::CameraController cameraController;
+ew::Transform monkeyTransform;
+
+int texSlot = 0;
+
+//Global state
+int screenWidth = 1080;
+int screenHeight = 720;
+float prevFrameTime;
+float deltaTime;
+
 struct DepthBuffer {
 	GLuint fbo;
 	GLuint depth;
 
 	void Initialize() {
-		//init framebuffer
+		//init framebuffer 
 		glGenFramebuffers(1, &fbo);
 		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
@@ -52,57 +99,14 @@ struct DepthBuffer {
 		glReadBuffer(GL_NONE);
 
 		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		{
 			printf("frame buffer not complete");
+		}
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
 }depthbuffer;
-
-struct Light
-{
-	glm::vec3 color;
-	glm::vec3 position;
-}light;
-
-struct Framebuffer
-{
-	GLuint fbo;
-	GLuint color0;
-	GLuint color1;
-	GLuint color2;
-	GLuint depth;
-};
-Framebuffer framebuffer;
-
-struct FullscreenQuad {
-	GLuint vao;
-	GLuint vbo;
-};
-FullscreenQuad fullscreen_quad;
-
-ew::Camera camera;
-ew::CameraController cameraController;
-ew::Transform monkeyTransform;
-
-int texSlot = 0;
-
-//Global state
-int screenWidth = 1080;
-int screenHeight = 720;
-float prevFrameTime;
-float deltaTime;
-
-static float quad_vertices[] = {
-	//pos (x,y) texcoords (u,v)
-	-1.0f, 1.0f, 0.0f, 1.0f,
-	-1.0f, -1.0f, 0.0f, 0.0f,
-	1.0f, -1.0f, 1.0f, 0.0f,
-
-	-1.0f, 1.0f, 0.0f, 1.0f,
-	1.0f, -1.0f, 1.0f, 0.0f,
-	1.0f, 1.0f, 1.0f, 1.0f,
-};
 
 void resetCamera(ew::Camera* camera, ew::CameraController* controller) {
 	camera->position = glm::vec3(0, 0, 5.0f);
@@ -110,99 +114,88 @@ void resetCamera(ew::Camera* camera, ew::CameraController* controller) {
 	controller->yaw = controller->pitch = 0;
 }
 
-void render(ew::Shader& shader, ew::Model& model, GLFWwindow* window, GLuint& brickTexture, ew::Mesh planeMesh, ew::Shader& shadow_pass)
-{
-	const auto view_proj = camera.projectionMatrix() * camera.viewMatrix();
-
-	const auto light_proj = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, 0.1f, 100.0f);
-	const auto light_view = glm::lookAt(light.position, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	const auto light_view_proj = light_proj * light_view;
-
-	glBindFramebuffer(GL_FRAMEBUFFER, depthbuffer.fbo);
-	{
-		glEnable(GL_DEPTH_TEST);
-
-		glViewport(0, 0, 1024, 1024);
-
-		//begin pass
-		glClear(GL_DEPTH_BUFFER_BIT);
-
-		shadow_pass.use();
-		shadow_pass.setMat4("transformModel", glm::mat4(1.0f));
-		shadow_pass.setMat4("light_view_proj", light_view_proj);
-
-	}
-
+void func(ew::Shader& shader, ew::Shader& geoShader, ew::Model &model, GLFWwindow *window, float time)
+{	
 	// bind fbuffer
-	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer1.fbo);
 	glViewport(0, 0, 800, 600);
 	//glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	//clear default buffer
 	glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+	
 	//1. pipeline definion
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_BACK);
 	glEnable(GL_DEPTH_TEST);
+
 	//2. gfx pass (what goes onto screen)
 	//RENDER
 	glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	//bind brick to tex unit 0
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, depthbuffer.depth);
-
-	shader.use();
-
-	//make "_MainTex" sampler2D sample from 2D texture bound to unit 0
-	shader.setInt("_MainTex", 0);
-	shader.setVec3("camera_position", camera.position);
-	shader.setVec3("light.color", light.color);
-	shader.setVec3("light.position", light.position);
-	shader.setMat4("transformModel", glm::mat4(1.0f));
-	shader.setMat4("viewProjection", camera.projectionMatrix() * camera.viewMatrix());
-	//Material
-	shader.setFloat("material.ambient", material.Ka);
-	shader.setFloat("material.diffuse", material.Kd);
-	shader.setFloat("material.specular", material.Ks);
-	shader.setFloat("material.shininess", material.Shininess);
-	
-	planeMesh.draw();
-
 	//rotate model around Y
 	monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0, 1.0, 0.0));
-	//transfrom.modelMatrix combines translation rotation scale into model matrix (4x4)
-	shader.setMat4("transformModel", monkeyTransform.modelMatrix());
-	
-	model.draw(); //Draws monkey model using current shader
 
 	cameraController.move(window, &camera, deltaTime);
 
-	//unbind frame buffer
+	//bind brick to tex unit 0
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, framebuffer1.color0);
+
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, framebuffer1.color1);
+
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, framebuffer1.color2);
+
+
+	shader.use();
+	shader.setInt("_NormalMap", texSlot);
+
+	for (int i = 0; i < 9; i++)
+	{
+		for (int j = 0; j < 9; j++)
+		{
+			shader.setMat4("transformModel", glm::translate(glm::vec3(i * 2.0f, 0, j * 2.0f)));
+			model.draw(); //Draws monkey model using current shader
+		}
+	}
+	
+	shader.setMat4("viewProjection", camera.projectionMatrix() * camera.viewMatrix());
+	shader.setVec3("cameraPos", camera.position);
+	shader.setVec3("water_color", debug.color);
+	shader.setInt("texture", 0);
+
+	//Material
+	shader.setFloat("_Material.Ka", material.Ka);
+	shader.setFloat("_Material.Kd", material.Kd);
+	shader.setFloat("_Material.Ks", material.Ks);
+	shader.setFloat("_Material.Shininess", material.Shininess);
+
+	cameraController.move(window, &camera, deltaTime);
+
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 int main() {
-	GLFWwindow* window = initWindow("Assignment 1", screenWidth, screenHeight);
+	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
-
-	ew::Mesh plane = ew::createPlane(50.0f, 50.0f, 100.0f);
 
 	//textures
 	GLuint brickTexture = ew::loadTexture("assets/brick_color.jpg");
+	GLuint waterTexture = ew::loadTexture("assets/water.png");
 	GLuint stonesTexture = ew::loadTexture("assets/PavingStones/PavingStones138_1K-JPG_Color.jpg");
 	GLuint stonesNorms = ew::loadTexture("assets/PavingStones/PavingStones138_1K-JPG_NormalGL.jpg");
 
-	//cache
-	ew::Shader shader_lit = ew::Shader("assets/lit.vert", "assets/lit.frag");
-	ew::Shader blinn = ew::Shader("assets/blinnphong.vert", "assets/blinnphong.frag");
-	ew::Shader shadow_pass = ew::Shader("assets/shadow_pass.vert", "assets/shadow_pass.frag");
 	ew::Shader shader_fullscreen = ew::Shader("assets/fullscreen.vert", "assets/fullscreen.frag");
-	ew::Shader invShader = ew::Shader("assets/inverse.vert", "assets/inverse.frag");
+
+	//cache
+	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
+	ew::Shader geo_shader = ew::Shader("assets/geo.vert", "assets/geo.frag");
 	ew::Model monkeyModel = ew::Model("assets/suzanne.fbx");
+	ew::Mesh plane = ew::createPlane(50.0f, 50.0f, 100.0f);
 
 	depthbuffer.Initialize();
 
@@ -230,18 +223,17 @@ int main() {
 	glBindVertexArray(0);
 
 	//init framebuffer
-	glGenFramebuffers(1, &framebuffer.fbo);
-	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.fbo);
+	glGenFramebuffers(1, &framebuffer1.fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer1.fbo);
 
 	//color
-	glGenTextures(1, &framebuffer.color0);
-	glBindTexture(GL_TEXTURE_2D, framebuffer.color0);
+	glGenTextures(1, &framebuffer1.color0);
+	glBindTexture(GL_TEXTURE_2D, framebuffer1.color0);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 800, 600, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.color0, 0);
-
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer1.color0, 0);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	while (!glfwWindowShouldClose(window)) {
@@ -255,15 +247,7 @@ int main() {
 		glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		//const auto rym = glm::rotate((float)time.absolute, glm::);
-
-		render(blinn, monkeyModel, window, brickTexture, plane, shadow_pass);
-
-		glDisable(GL_DEPTH_TEST);
-
-		glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
-
+		func(shader, geo_shader, monkeyModel, window, time);
 
 		//render fullscreen quad
 		shader_fullscreen.use();
@@ -271,7 +255,7 @@ int main() {
 		glViewport(0, 0, screenWidth, screenHeight);
 		glBindVertexArray(fullscreen_quad.vao);
 		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, framebuffer.color0);
+		glBindTexture(GL_TEXTURE_2D, framebuffer2.color0);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 		glBindVertexArray(0);
 
@@ -288,14 +272,6 @@ void drawUI() {
 	ImGui::NewFrame();
 
 	ImGui::Begin("Settings");
-	if (ImGui::Button("Set Brick"))
-	{
-		texSlot = 0;
-	}
-	if (ImGui::Button("Set Stone"))
-	{
-		texSlot = 1;
-	}
 	if (ImGui::Button("Reset Camera"))
 	{
 		resetCamera(&camera, &cameraController);
@@ -307,7 +283,8 @@ void drawUI() {
 		ImGui::SliderFloat("SpecularK", &material.Ks, 0.0f, 1.0f);
 		ImGui::SliderFloat("Shininess", &material.Shininess, 2.0f, 1024.0f);
 	}
-	ImGui::Image((ImTextureID)(intptr_t)framebuffer.color0 , ImVec2(800, 600));
+	ImGui::Image((ImTextureID)(intptr_t)framebuffer1.color0, ImVec2(800, 600));
+	ImGui::Image((ImTextureID)(intptr_t)framebuffer2.color0, ImVec2(800, 600));
 	ImGui::Text("Add Controls Here!");
 	ImGui::End();
 
